@@ -3,13 +3,17 @@
 
 import sys
 import os
+
 from PyQt5.uic import loadUi
 from PyQt5.QtCore import Qt, QCoreApplication, pyqtSignal
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
 from PyQt5.QtWidgets import QDialog, QFileDialog, QMessageBox
 
-from lib.epub_creater import Downloader, EBook, MultiThreads
+from lib.ebook import EBook
+from lib.downloader import Downloader
+from lib.multi_threads import MultiThreads
+
 from pyquery import PyQuery as pq
 from cgi import escape
 
@@ -23,9 +27,9 @@ class DialogImportFromMenu(QDialog):
         loadUi('ui/importFromMenu.ui', self)
 
         self.target = target
-        self.initEvent()
+        self.initSignal()
 
-    def initEvent(self):
+    def initSignal(self):
         self.btnCancel.clicked.connect(self.cancel)
 
     def cancel(self):
@@ -41,13 +45,13 @@ class DialogSetStyle(QDialog):
         super(DialogSetStyle, self).__init__()
 
         loadUi('ui/setStyle.ui', self)
-        self.initEvent()
+        self.initSignal()
         self.style_file = styleFilePath
         if os.path.isfile(self.style_file):
             with open(self.style_file, 'r') as f:
                 self.styleEditor.setPlainText(f.read())
 
-    def initEvent(self):
+    def initSignal(self):
         self.btnSaveStyle.clicked.connect(self.saveStyle)
         self.btnCancel.clicked.connect(self.cancel)
 
@@ -73,7 +77,7 @@ class ApplicationWindow(QMainWindow):
         self.style_path = 'template/style.css'
 
         self.initUi()
-        self.initEvent()
+        self.initSignal()
 
     def initUi(self):
         self.epub.clear()
@@ -92,7 +96,7 @@ class ApplicationWindow(QMainWindow):
 
         self.epub.expandAll()
 
-    def initEvent(self):
+    def initSignal(self):
         # 菜单项事件信号绑定
         self.actionRemoveChapter.triggered.connect(self.removeChapter)
         self.actionRemoveAllChapters.triggered.connect(self.removeAllChapters)
@@ -119,7 +123,7 @@ class ApplicationWindow(QMainWindow):
         self.epub.itemClicked.connect(self.chapterClicked)
         self.chapterContent.textChanged.connect(self.chapterContentChanged)
 
-    def disableEvent(self):
+    def disableSignal(self):
         # 菜单项事件信号绑定
         self.actionRemoveChapter.triggered.disconnect()
         self.actionRemoveAllChapters.triggered.disconnect()
@@ -211,7 +215,7 @@ class ApplicationWindow(QMainWindow):
 
     def refreshChapterUi(self):
         # 刷新显示章节内容
-        self.disableEvent()
+        self.disableSignal()
         chapter = self.epub.currentItem()
         if chapter:
             self.chapterTitle.setText(chapter.text(0))
@@ -236,7 +240,7 @@ class ApplicationWindow(QMainWindow):
             self.chapterTitle.setReadOnly(True)
             self.chapterContent.setReadOnly(True)
             self.chapterURL.setReadOnly(True)
-        self.initEvent()
+        self.initSignal()
 
     def newChapter(self, title=None, content=None, url=None):
         # 创建新的 TreeWidgetItem 章节
