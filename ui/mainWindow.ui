@@ -392,7 +392,7 @@
      <height>26</height>
     </rect>
    </property>
-   <widget class="QMenu" name="menuImport">
+   <widget class="QMenu" name="menuChapter">
     <property name="title">
      <string>章节(&amp;C)</string>
     </property>
@@ -412,12 +412,13 @@
     <addaction name="actionSaveAs"/>
     <addaction name="actionExit"/>
    </widget>
-   <widget class="QMenu" name="menuEdit">
+   <widget class="QMenu" name="menuOther">
     <property name="title">
-     <string>设置(&amp;E)</string>
+     <string>其它(&amp;O)</string>
     </property>
     <addaction name="actionSetStyle"/>
     <addaction name="actionSetConfig"/>
+    <addaction name="actionClearCache"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -426,8 +427,8 @@
     <addaction name="actionAboutThis"/>
    </widget>
    <addaction name="menuFile"/>
-   <addaction name="menuImport"/>
-   <addaction name="menuEdit"/>
+   <addaction name="menuChapter"/>
+   <addaction name="menuOther"/>
    <addaction name="menuHelp"/>
   </widget>
   <action name="actionImportFromPage">
@@ -512,7 +513,7 @@
      <normaloff>../resource/style.png</normaloff>../resource/style.png</iconset>
    </property>
    <property name="text">
-    <string>修改CSS样式表...</string>
+    <string>修改样式表模板...</string>
    </property>
   </action>
   <action name="actionRemoveAllChapters">
@@ -526,6 +527,11 @@
    </property>
    <property name="statusTip">
     <string>设置软件的各项参数。</string>
+   </property>
+  </action>
+  <action name="actionClearCache">
+   <property name="text">
+    <string>清除下载缓存...</string>
    </property>
   </action>
  </widget>

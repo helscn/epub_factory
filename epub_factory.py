@@ -305,10 +305,10 @@ class ApplicationWindow(QMainWindow):
         self.config_path = 'config.json'
         # 默认配置值
         self.config={
-            'httpProxyEnable':True,
+            'httpProxyEnable':False,
             'httpProxy':{
-                'http':'http://127.0.0.1:1081',
-                'https':'http://127.0.0.1:1081'
+                'http':'http://127.0.0.1:1080',
+                'https':'http://127.0.0.1:1080'
             }
         }
 
@@ -338,6 +338,7 @@ class ApplicationWindow(QMainWindow):
         self.actionSelectCover.triggered.connect(self.changeCover)
         self.actionSetStyle.triggered.connect(self.setStyle)
         self.actionSetConfig.triggered.connect(self.setConfig)
+        self.actionClearCache.triggered.connect(self.clearCache)
         self.actionImportChapter.triggered.connect(self.importChapter)
         self.actionSaveAs.triggered.connect(self.saveAs)
         self.actionExit.triggered.connect(QCoreApplication.instance().quit)
@@ -364,6 +365,7 @@ class ApplicationWindow(QMainWindow):
         self.actionSelectCover.triggered.disconnect()
         self.actionSetStyle.triggered.disconnect()
         self.actionSetConfig.triggered.disconnect()
+        self.actionClearCache.triggered.disconnect()
         self.actionImportChapter.triggered.disconnect()
         self.actionSaveAs.triggered.disconnect()
         self.actionExit.triggered.disconnect()
@@ -394,6 +396,26 @@ class ApplicationWindow(QMainWindow):
             self.__downloader.proxies=self.config['httpProxy']
         else:
             self.__downloader.proxies=None
+
+    def clearCache(self):
+        reply = QMessageBox.question(self,'清除缓存','是否清除所有下载的缓存文件（包括所有网页或图片）？', QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        if reply==QMessageBox.Yes:
+            tempdir='temp/'
+            files=os.listdir(tempdir)
+            total=len(files)
+            count=0
+            self.statusBar.hide()
+            self.progressBar.setValue(0)
+            self.progressBar.show()
+            for file in files:
+                if os.path.isfile(os.path.join(tempdir,file)):
+                    os.remove(os.path.join(tempdir,file))
+                count+=1
+                self.progressBar.setValue(count*100/total)
+                QApplication.processEvents()
+            self.progressBar.hide()
+            self.statusBar.show()
+            QMessageBox.information(self,'清除完成','所有缓存已经清除完毕。', QMessageBox.Ok)
 
     def expandAllChapters(self):
         self.epub.expandAll()
