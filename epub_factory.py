@@ -3,6 +3,7 @@
 
 import sys
 import os
+import json
 
 from PyQt5.uic import loadUi
 from PyQt5.QtCore import Qt, QCoreApplication, pyqtSignal
@@ -18,26 +19,211 @@ from pyquery import PyQuery as pq
 from cgi import escape
 
 
-class DialogImportFromMenu(QDialog):
+class DialogImporter(QDialog):
+    # 插入兄弟章节信号
     insertSiblingChapterSignal = pyqtSignal(QTreeWidgetItem, str, str, str)
+
+    # 插入子章节信号
     insertChildChapterSignal = pyqtSignal(QTreeWidgetItem, str, str, str)
 
-    def __init__(self, target):
-        super(DialogImportFromMenu, self).__init__()
-        loadUi('ui/importFromMenu.ui', self)
+    # 导入完成的信号 
+    importFinishSignal = pyqtSignal()
 
-        self.target = target
+    # 每个章节插入完成的信号
+    insertOneChapter = pyqtSignal(str,str)
+
+    def __init__(self, target):
+        super(DialogImporter, self).__init__()
+        loadUi('ui/chapterImporter.ui', self)
+
+        self.root = target
+        self.currentChapter=target
+        self.chapterList=[]
+
+        self.downloader=Downloader().get
+
+        self.initUi()
         self.initSignal()
 
+    def initUi(self):
+        self.progressBar.hide()
+        self.progressBar.setValue(0)
+
     def initSignal(self):
-        self.btnCancel.clicked.connect(self.cancel)
+        self.btnOpenLocalFile.clicked.connect(self.openLocalFile)
+        self.btnFetchChapterList.clicked.connect(self.fetchChapterList)
+        self.btnFetchChapter.clicked.connect(self.fetchChapter)
+        self.insertOneChapter.connect(self.updateProgress)
 
     def cancel(self):
-        self.insertChildChapterSignal.emit(
-            self.target, 'Title', 'Content', 'URL')
         self.close()
         self.destroy()
 
+    def openLocalFile(self):
+        filePath, fileType = QFileDialog.getOpenFileName(
+            parent=self, caption="选择网页文件", filter="HTML Files (*.html)")  # 设置文件扩展名过滤注意用双分号间隔
+        if filePath:
+            self.realUrl.setText('file://'+filePath)
+
+    def query(self,realUrl,referUrl,*args):
+        # 根据查询选择器查询网页中的指定元素
+        content=self.downloader(realUrl,encoding=self.encoding.currentText())
+
+        doc=pq(content, parser='html').make_links_absolute(base_url=referUrl)
+        if len(args)==0:
+            return doc
+
+        result=[]
+        for arg in args:
+            if arg:
+                r=doc(arg)
+                result.append(r)
+            else:
+                result.append([])
+        return tuple(result) if len(result)>1 else result[0]
+
+    def updateProgress(self,title,url):
+        self.chapterBrowser.append('已导入章节：'+title+' ('+url+')')
+        QApplication.processEvents()    # 处理窗口事件，避免失去响应
+
+    def updateCurrentChapter(self,chapter):
+        self.currentChapter=chapter
+
+    def showChapterList(self,target):
+        html='<ol>\r\n'
+        for item in target:
+            title=item['title'] or '无标题'
+            html+='\r\n<li>'+title+'</li>\r\n'
+            if 'child'  in item and item['child']:
+                html+=self.showChapterList(item['child'])
+        html+='</ol>\r\n'
+        return html
+
+    def fetchChapterList(self):
+        groupSel=self.chapterGroupSelector.text().strip().lower()
+        linkSel=self.chapterLinkSelector.text().strip().lower()
+        pagSel=self.menuPaginationSelector.text().strip().lower()
+        if not linkSel.endswith('a') and linkSel:
+            linkSel=linkSel+' a'
+        if not pagSel.endswith('a') and pagSel:
+            pagSel=pagSel+' a'
+
+        self.chapterList=[]
+        parent=self.chapterList
+        child=self.chapterList
+        realUrl=self.realUrl.text()
+        referUrl=self.referUrl.text()
+        flag=bool(groupSel or linkSel or pagSel)
+        itemSel=groupSel+','+linkSel if groupSel and linkSel else groupSel+linkSel
+        while flag:
+            flag=False
+            try:
+                items,group,links,paginations=self.query(realUrl,referUrl,itemSel,groupSel,linkSel,pagSel)
+            except Exception as e:
+                QMessageBox.critical(self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.Ok)
+                return
+            for item in items:
+                if item in group:
+                    url=item.attrib['href'] if 'href' in item.attrib else ''
+                    section={
+                        'title': pq(item).text().strip(),
+                        'realUrl': url,
+                        'referUrl': url,
+                        'child':[]
+                    }
+                    parent.append(section)
+                    child=section['child']
+                elif item in links:
+                    if 'href' in item.attrib:
+                        url=item.attrib['href']
+                        child.append({
+                            'title': pq(item).text().strip(),
+                            'realUrl': url,
+                            'referUrl': url,
+                            'child':None
+                        })
+            if paginations and 'href' in  paginations[0]:
+                referUrl=paginations[0].attrib['href']
+                realUrl=referUrl
+                flag=True
+        html=self.showChapterList(self.chapterList)
+        self.chapterListBrowser.setHtml(html)
+
+    def saveChapter(self,target,data):
+        # 对象选择器
+        titleSel=self.chapterTitleSelector.text().strip().lower()
+        contentSel=self.chapterContentSelector.text().strip().lower()
+        pagSel=self.chapterPaginationSelector.text().strip().lower()
+        itemSel=titleSel+','+contentSel if titleSel and contentSel else titleSel+contentSel
+
+        # 网页地址
+        title=data['title']
+        realUrl=data['realUrl']
+        referUrl=data['referUrl']
+        content=pq('<p></p>')
+        if 'child' in data and data['child']:
+            print('开始插入新卷:',title)
+            self.insertSiblingChapterSignal.emit(target,title,'',realUrl)
+            target=self.currentChapter
+            for ch in data['child']:
+                self.saveChapter(target,ch)
+            return
+
+        count=0
+        flag=True
+        while flag:
+            flag=False
+            try:
+                self.chapterBrowser.append('正在抓取网页：'+realUrl)
+                print('正在抓取网页：'+realUrl)
+                QApplication.processEvents()    # 处理窗口事件，避免失去响应
+                items,titles,contents,paginations=self.query(realUrl,referUrl,itemSel,titleSel,contentSel,pagSel)
+            except Exception as e:
+                print("无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n'+e.args[0])
+                QMessageBox.critical(self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.Ok)
+                return
+            for item in items:
+                if item in titles:
+                    if count>0:
+                        print('保存章节：',title)
+                        self.insertChildChapterSignal.emit(target,title,content.html(),referUrl)
+                        self.insertOneChapter.emit(title or '未命名章节',realUrl)
+                    title=pq(item).text().strip()
+                    content=pq('<p></p>')
+                    count=0
+                elif item in contents:
+                    content.append(item)
+                    count+=1
+            if paginations and 'href' in  paginations[0]:
+                referUrl=paginations[0].attrib['href']
+                realUrl=referUrl
+                flag=True
+
+        if count>0:
+            print('保存章节：',title)
+            self.insertChildChapterSignal.emit(target,title,content.html(),data['referUrl'])
+            self.insertOneChapter.emit(title or '未命名章节',realUrl)
+
+    def fetchChapter(self):
+        if not self.chapterContentSelector.text().strip():
+            QMessageBox.critical(self, "错误", "请输入章节内容的选择器", QMessageBox.Ok)
+        if not self.chapterList:
+            self.chapterList=[{
+                'title': '',
+                'realUrl': self.realUrl.text(),
+                'referUrl': self.referUrl.text(),
+            }]
+        count=0
+        total=len(self.chapterList)
+        self.progressBar.show()
+        for item in self.chapterList:
+            self.saveChapter(self.root,item)
+            count+=1
+            self.progressBar.setValue(count*100/total)
+        QMessageBox.information(
+            self, '保存完毕', '所有章节已经保存，按确定关闭当前窗口。', QMessageBox.Ok)
+        self.importFinishSignal.emit()
+        self.cancel()
 
 class DialogSetStyle(QDialog):
 
@@ -66,8 +252,49 @@ class DialogSetStyle(QDialog):
         self.close()
         self.destroy()
 
+class DialogSetConfig(QDialog):
+    saveConfigSignal = pyqtSignal(dict)
+
+    def __init__(self, config):
+        super(DialogSetConfig, self).__init__()
+
+        loadUi('ui/setConfig.ui', self)
+        self.config=config
+        self.initUi()
+        self.initSignal()
+
+    def initUi(self):
+        self.httpProxyEnable.setChecked(self.config['httpProxyEnable'])
+        self.httpProxy.setText(self.config['httpProxy']['http'])
+        self.httpsProxy.setText(self.config['httpProxy']['https'])
+        self.updateUi()
+
+    def initSignal(self):
+        self.btnSaveConfig.clicked.connect(self.saveConfig)
+        self.btnCancel.clicked.connect(self.cancel)
+        self.httpProxyEnable.toggled.connect(self.updateUi)
+
+    def updateUi(self):
+        if self.httpProxyEnable.isChecked():
+            self.httpProxy.setEnabled(True)
+            self.httpsProxy.setEnabled(True)
+        else:
+            self.httpProxy.setEnabled(False)
+            self.httpsProxy.setEnabled(False)
+    
+    def saveConfig(self):
+        self.config['httpProxyEnable']=self.httpProxyEnable.isChecked()
+        self.config['httpProxy']['http']=self.httpProxy.text()
+        self.config['httpProxy']['https']=self.httpsProxy.text()
+        self.saveConfigSignal.emit(self.config)
+        self.cancel()
+
+    def cancel(self):
+        self.close()
+        self.destroy()
 
 class ApplicationWindow(QMainWindow):
+    updateChapterSignal = pyqtSignal(QTreeWidgetItem)
 
     def __init__(self):
         super(ApplicationWindow, self).__init__()
@@ -75,9 +302,22 @@ class ApplicationWindow(QMainWindow):
         loadUi('ui/mainWindow.ui', self)
         self.cover_path = 'template/cover.jpg'
         self.style_path = 'template/style.css'
+        self.config_path = 'config.json'
+        # 默认配置值
+        self.config={
+            'httpProxyEnable':True,
+            'httpProxy':{
+                'http':'http://127.0.0.1:1081',
+                'https':'http://127.0.0.1:1081'
+            }
+        }
+
+        self.__downloader = Downloader()
+        self.downloader = self.__downloader.get
 
         self.initUi()
         self.initSignal()
+        self.loadConfig(self.config_path)
 
     def initUi(self):
         self.epub.clear()
@@ -86,15 +326,6 @@ class ApplicationWindow(QMainWindow):
         self.cover.setIcon(QIcon(self.cover_path))
         self.statusBar.show()
         self.progressBar.hide()
-
-        # 测试章节内容
-        for i in range(5):
-            item = self.newChapter()
-            item.setText(0, '章节'+str(i))
-            item.content = '内容'+str(i)
-            self.epub.root.addChild(item)
-
-        self.epub.expandAll()
 
     def initSignal(self):
         # 菜单项事件信号绑定
@@ -106,7 +337,8 @@ class ApplicationWindow(QMainWindow):
             self.insertChildChapter)
         self.actionSelectCover.triggered.connect(self.changeCover)
         self.actionSetStyle.triggered.connect(self.setStyle)
-        self.actionImportFromMenu.triggered.connect(self.importFromMenu)
+        self.actionSetConfig.triggered.connect(self.setConfig)
+        self.actionImportChapter.triggered.connect(self.importChapter)
         self.actionSaveAs.triggered.connect(self.saveAs)
         self.actionExit.triggered.connect(QCoreApplication.instance().quit)
         self.actionAboutThis.triggered.connect(self.aboutThis)
@@ -131,7 +363,8 @@ class ApplicationWindow(QMainWindow):
         self.actionInsertChildChapter.triggered.disconnect()
         self.actionSelectCover.triggered.disconnect()
         self.actionSetStyle.triggered.disconnect()
-        self.actionImportFromMenu.triggered.disconnect()
+        self.actionSetConfig.triggered.disconnect()
+        self.actionImportChapter.triggered.disconnect()
         self.actionSaveAs.triggered.disconnect()
         self.actionExit.triggered.disconnect()
         self.actionAboutThis.triggered.disconnect()
@@ -142,16 +375,43 @@ class ApplicationWindow(QMainWindow):
         self.epub.itemClicked.disconnect()
         self.chapterContent.textChanged.disconnect()
 
-    def importFromMenu(self):
+    def loadConfig(self,file_path):
+        if os.path.isfile(file_path):
+            with open(file_path,'rb') as f:
+                __config=json.load(f)
+            self.updateConfig(__config)
+
+    def updateConfig(self,config):
+        for key,value in config.items():
+            if key in self.config:
+                config[key]=value
+        self.saveConfig()
+
+    def saveConfig(self):
+        with open(self.config_path,'w',encoding='utf-8') as f:
+            json.dump(self.config,f,indent=4,sort_keys=True)
+        if self.config['httpProxyEnable']:
+            self.__downloader.proxies=self.config['httpProxy']
+        else:
+            self.__downloader.proxies=None
+
+    def expandAllChapters(self):
+        self.epub.expandAll()
+
+    def importChapter(self):
+        # 批量导入章节
         target = self.epub.currentItem()
         if not target:
             target = self.epub.root
-        self.dialogImportFromMenu = DialogImportFromMenu(target)
-        self.dialogImportFromMenu.insertSiblingChapterSignal.connect(
+        self.dialogImporter = DialogImporter(target)
+        self.dialogImporter.insertSiblingChapterSignal.connect(
             self.insertSiblingChapterSlot)
-        self.dialogImportFromMenu.insertChildChapterSignal.connect(
+        self.dialogImporter.insertChildChapterSignal.connect(
             self.insertChildChapterSlot)
-        self.dialogImportFromMenu.show()
+        self.dialogImporter.importFinishSignal.connect(self.expandAllChapters)
+        self.updateChapterSignal.connect(self.dialogImporter.updateCurrentChapter)
+        self.dialogImporter.downloader=self.downloader
+        self.dialogImporter.show()
 
     def titleChanged(self, title):
         # 修改电子书标题
@@ -184,6 +444,11 @@ class ApplicationWindow(QMainWindow):
     def setStyle(self):
         self.dialogSetStyle = DialogSetStyle(self.style_path)
         self.dialogSetStyle.show()
+
+    def setConfig(self):
+        self.dialogSetConfig=DialogSetConfig(self.config)
+        self.dialogSetConfig.saveConfigSignal.connect(self.saveConfig)
+        self.dialogSetConfig.show()
 
     def outputChapterList(self, chapter, target=[], root=False):
         # 将所有章节内容生成为HTML列表
@@ -266,10 +531,11 @@ class ApplicationWindow(QMainWindow):
         if not target:
             target = self.epub.root
         chapter = self.newChapter(title=title, content=content, url=url)
-        if chapter is self.epub.root:
+        if not target.parent():
             self.epub.root.addChild(chapter)
         else:
             target.parent().addChild(chapter)
+        self.updateChapterSignal.emit(chapter)
 
     def insertChildChapter(self):
         # 插入子章节
@@ -306,8 +572,6 @@ class ApplicationWindow(QMainWindow):
     def outputChapters(self, chapter, target, root=False):
         # 循环迭代 TreeWidget 的所有 Item 对象
 
-        QApplication.processEvents()    # 处理窗口事件，避免失去响应
-
         title = chapter.text(0)
         count = chapter.childCount()
         if root:
@@ -321,9 +585,8 @@ class ApplicationWindow(QMainWindow):
             url = None
         if hasattr(chapter, 'content'):
             content = chapter.content if chapter.content else '<p></p>'
-            content = pq(content, parser='html')
-            if not content('body').text():
-                content = None
+            if type(content) is str:
+                content = pq(content, parser='html')
         else:
             content = None
         if count == 0:

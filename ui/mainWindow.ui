@@ -197,13 +197,6 @@
          </layout>
         </item>
         <item>
-         <widget class="QPushButton" name="pushButton">
-          <property name="text">
-           <string>PushButton</string>
-          </property>
-         </widget>
-        </item>
-        <item>
          <spacer name="verticalSpacer">
           <property name="orientation">
            <enum>Qt::Vertical</enum>
@@ -351,6 +344,11 @@
               <height>35</height>
              </size>
             </property>
+            <property name="font">
+             <font>
+              <family>黑体</family>
+             </font>
+            </property>
             <property name="text">
              <string>引用URL：</string>
             </property>
@@ -396,21 +394,7 @@
    </property>
    <widget class="QMenu" name="menuImport">
     <property name="title">
-     <string>导入(&amp;I)</string>
-    </property>
-    <addaction name="actionImportFromPage"/>
-    <addaction name="actionImportFromMenu"/>
-   </widget>
-   <widget class="QMenu" name="menuFile">
-    <property name="title">
-     <string>电子书(&amp;F)</string>
-    </property>
-    <addaction name="actionSaveAs"/>
-    <addaction name="actionExit"/>
-   </widget>
-   <widget class="QMenu" name="menuEdit">
-    <property name="title">
-     <string>编辑(&amp;E)</string>
+     <string>章节(&amp;C)</string>
     </property>
     <addaction name="actionInsertSiblingChapter"/>
     <addaction name="actionInsertChildChapter"/>
@@ -418,8 +402,22 @@
     <addaction name="actionRemoveChapter"/>
     <addaction name="actionRemoveAllChapters"/>
     <addaction name="separator"/>
+    <addaction name="actionImportChapter"/>
+   </widget>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>电子书(&amp;F)</string>
+    </property>
     <addaction name="actionSelectCover"/>
+    <addaction name="actionSaveAs"/>
+    <addaction name="actionExit"/>
+   </widget>
+   <widget class="QMenu" name="menuEdit">
+    <property name="title">
+     <string>设置(&amp;E)</string>
+    </property>
     <addaction name="actionSetStyle"/>
+    <addaction name="actionSetConfig"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -428,8 +426,8 @@
     <addaction name="actionAboutThis"/>
    </widget>
    <addaction name="menuFile"/>
-   <addaction name="menuEdit"/>
    <addaction name="menuImport"/>
+   <addaction name="menuEdit"/>
    <addaction name="menuHelp"/>
   </widget>
   <action name="actionImportFromPage">
@@ -440,9 +438,9 @@
     <string>Ctrl+U</string>
    </property>
   </action>
-  <action name="actionImportFromMenu">
+  <action name="actionImportChapter">
    <property name="text">
-    <string>从目录网页导入章节...</string>
+    <string>批量导入章节...</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+I</string>
@@ -514,12 +512,20 @@
      <normaloff>../resource/style.png</normaloff>../resource/style.png</iconset>
    </property>
    <property name="text">
-    <string>修改样式表...</string>
+    <string>修改CSS样式表...</string>
    </property>
   </action>
   <action name="actionRemoveAllChapters">
    <property name="text">
     <string>删除所有章节</string>
+   </property>
+  </action>
+  <action name="actionSetConfig">
+   <property name="text">
+    <string>参数设置...</string>
+   </property>
+   <property name="statusTip">
+    <string>设置软件的各项参数。</string>
    </property>
   </action>
  </widget>

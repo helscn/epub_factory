@@ -1,0 +1,7 @@
+{
+    "httpProxy": {
+        "http": "http://127.0.0.1:1081",
+        "https": "http://127.0.0.1:1081"
+    },
+    "httpProxyEnable": false
+}

@@ -4,6 +4,7 @@
 import time
 import os
 import requests
+import chardet
 from hashlib import md5
 
 class Downloader():
@@ -73,6 +74,13 @@ class Downloader():
             f.write(content)
 
     def get_img(self, url):
+        if url.startswith('file://') or os.path.isfile(url):
+            url=url[7:] if url.startswith('file://') else url
+            if os.path.isfile(url):
+                with open(url,'rb') as f:
+                    return f.read()
+            else:
+                raise ValueError('无法读取本地文件:{}'.format(url))
         if self.cache:
             data = self.get_cache(url)
             if data:
@@ -98,13 +106,33 @@ class Downloader():
                 continue
         raise ValueError('无法获取指定的图片：'+url)
 
-    def get(self, url):
-        if url.endswith('.jpg') or url.endswith('.gif'):
-            return self.get_img(url)
+    def decode(self,content,encoding=None,errors='ignore'):
+        if type(content) is bytes and encoding:
+            if encoding.lower()=='auto':
+                encoding=chardet.detect(content)['encoding']
+                return content.decode(encoding=encoding,errors=errors)
+        else:
+            return content
+            
+
+    def get(self, url, encoding=None):
+        if url.startswith('file://') or os.path.isfile(url):
+            url=url[7:] if url.startswith('file://') else url
+            if os.path.isfile(url):
+                with open(url,'rb') as f:
+                    if encoding:
+                        return self.decode(f.read(),encoding)
+                    else:
+                        return f.read()
+            else:
+                raise ValueError('无法读取本地文件:{}'.format(url))
         if self.cache:
             data = self.get_cache(url)
             if data:
-                return data
+                if encoding:
+                    return self.decode(data,encoding)
+                else:
+                    return data
         retry_count = 0
         while retry_count < self.retry:
             try:
@@ -113,13 +141,14 @@ class Downloader():
                 if r.status_code == 200:
                     if self.cache:
                         self.cache_it(url, r.content)
-                    return r.content
+                    if encoding:
+                        return self.decode(r.content,encoding)
+                    else:
+                        return r.content
                 else:
                     raise ValueError('获取网页结果状态码异常:{}'.format(r.status_code))
             except Exception as e:
                 retry_count += 1
-                # logging.error(e.args[0])
-                # logging.info('正在尝试重新获取网页：'+url)
                 time.sleep(self.retry_interval)
                 continue
         raise ValueError('无法获取指定的网页：'+url)
