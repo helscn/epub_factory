@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+﻿#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
 import sys
@@ -379,7 +379,7 @@ class ApplicationWindow(QMainWindow):
 
     def loadConfig(self,file_path):
         if os.path.isfile(file_path):
-            with open(file_path,'rb') as f:
+            with open(file_path,mode='r',encoding='utf-8') as f:
                 __config=json.load(f)
             self.updateConfig(__config)
 
@@ -398,7 +398,7 @@ class ApplicationWindow(QMainWindow):
             self.__downloader.proxies=None
 
     def clearCache(self):
-        reply = QMessageBox.question(self,'清除缓存','是否清除所有下载的缓存文件（包括所有网页或图片）？', QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        reply = QMessageBox.question(self,'清除缓存','是否清除所有下载的缓存文件（包括所有网页和图片）？', QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
         if reply==QMessageBox.Yes:
             tempdir='temp/'
             files=os.listdir(tempdir)

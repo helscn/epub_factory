@@ -7,6 +7,7 @@ import requests
 import chardet
 from hashlib import md5
 
+
 class Downloader():
     def __init__(self, timeout=5, retry=5, retry_interval=2, proxies=None, cookies=None, cache=True, cache_dir='./temp'):
         self.timeout = timeout
@@ -16,9 +17,16 @@ class Downloader():
         self.session = requests.Session()
         self.cache = cache
         self.cache_dir = cache_dir
-        self.__cookies=None
         if cookies:
-            self.cookies=cookies
+            if type(cookies) is requests.cookies.RequestsCookieJar:
+                self.__cookies = cookies
+                self.session.cookies = self.__cookies
+            elif type(cookies) is dict:
+                self.__cookies = requests.utils.cookiejar_from_dict(
+                    cookies, cookiejar=None, overwrite=True)
+                self.session.cookies = self.__cookies
+            else:
+                raise ValueError('Unknow cookies type!')
 
     @staticmethod
     def md5_hash(s):
@@ -31,13 +39,14 @@ class Downloader():
         return self.__cookies
 
     @cookies.setter
-    def cookies(self,cookies):
+    def cookies(self, cookies):
         if type(cookies) is requests.cookies.RequestsCookieJar:
-            self.__cookies=cookies
-            self.session.cookies =  self.__cookies
+            self.__cookies = cookies
+            self.session.cookies = self.__cookies
         elif type(cookies) is dict:
-            self.__cookies=requests.utils.cookiejar_from_dict(cookies, cookiejar=None, overwrite=True)
-            self.session.cookies =  self.__cookies
+            self.__cookies = requests.utils.cookiejar_from_dict(
+                cookies, cookiejar=None, overwrite=True)
+            self.session.cookies = self.__cookies
         else:
             raise ValueError('Unknow cookies type!')
 
@@ -75,9 +84,9 @@ class Downloader():
 
     def get_img(self, url):
         if url.startswith('file://') or os.path.isfile(url):
-            url=url[7:] if url.startswith('file://') else url
+            url = url[7:] if url.startswith('file://') else url
             if os.path.isfile(url):
-                with open(url,'rb') as f:
+                with open(url, 'rb') as f:
                     return f.read()
             else:
                 raise ValueError('无法读取本地文件:{}'.format(url))
@@ -106,22 +115,21 @@ class Downloader():
                 continue
         raise ValueError('无法获取指定的图片：'+url)
 
-    def decode(self,content,encoding=None,errors='ignore'):
+    def decode(self, content, encoding=None, errors='ignore'):
         if type(content) is bytes and encoding:
-            if encoding.lower()=='auto':
-                encoding=chardet.detect(content)['encoding']
-                return content.decode(encoding=encoding,errors=errors)
+            if encoding.lower() == 'auto':
+                encoding = chardet.detect(content)['encoding']
+                return content.decode(encoding=encoding, errors=errors)
         else:
             return content
-            
 
     def get(self, url, encoding=None):
         if url.startswith('file://') or os.path.isfile(url):
-            url=url[7:] if url.startswith('file://') else url
+            url = url[7:] if url.startswith('file://') else url
             if os.path.isfile(url):
-                with open(url,'rb') as f:
+                with open(url, 'rb') as f:
                     if encoding:
-                        return self.decode(f.read(),encoding)
+                        return self.decode(f.read(), encoding)
                     else:
                         return f.read()
             else:
@@ -130,7 +138,7 @@ class Downloader():
             data = self.get_cache(url)
             if data:
                 if encoding:
-                    return self.decode(data,encoding)
+                    return self.decode(data, encoding)
                 else:
                     return data
         retry_count = 0
@@ -142,7 +150,7 @@ class Downloader():
                     if self.cache:
                         self.cache_it(url, r.content)
                     if encoding:
-                        return self.decode(r.content,encoding)
+                        return self.decode(r.content, encoding)
                     else:
                         return r.content
                 else:

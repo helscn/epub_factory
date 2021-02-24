@@ -125,8 +125,8 @@ nav[epub|type~='toc'] > ol > li > ol > li {
 
         ext = os.path.splitext(os.path.basename(path))[-1]
         self.__images_count += 1
-        img_name = 'img_%04d' % (self.__images_count)
-        img_id = 'Image_%04d' % (self.__images_count)
+        img_name = 'img%05d' % (self.__images_count)
+        img_id = 'Image_%05d' % (self.__images_count)
         img_path = 'images/' + img_name + ext
         img = epub.EpubItem(uid=img_id,
                             file_name=img_path,
