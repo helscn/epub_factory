@@ -16,7 +16,7 @@ from lib.downloader import Downloader
 from lib.multi_threads import MultiThreads
 
 from pyquery import PyQuery as pq
-from cgi import escape
+from html import escape
 
 
 class DialogImporter(QDialog):
@@ -26,21 +26,21 @@ class DialogImporter(QDialog):
     # 插入子章节信号
     insertChildChapterSignal = pyqtSignal(QTreeWidgetItem, str, str, str)
 
-    # 导入完成的信号 
+    # 导入完成的信号
     importFinishSignal = pyqtSignal()
 
     # 每个章节插入完成的信号
-    insertOneChapter = pyqtSignal(str,str)
+    insertOneChapter = pyqtSignal(str, str)
 
     def __init__(self, target):
         super(DialogImporter, self).__init__()
         loadUi('ui/chapterImporter.ui', self)
 
         self.root = target
-        self.currentChapter=target
-        self.chapterList=[]
+        self.currentChapter = target
+        self.chapterList = []
 
-        self.downloader=Downloader().get
+        self.downloader = Downloader().get
 
         self.initUi()
         self.initSignal()
@@ -65,165 +65,173 @@ class DialogImporter(QDialog):
         if filePath:
             self.realUrl.setText('file://'+filePath)
 
-    def query(self,realUrl,referUrl,*args):
+    def query(self, realUrl, referUrl, *args):
         # 根据查询选择器查询网页中的指定元素
-        content=self.downloader(realUrl,encoding=self.encoding.currentText())
+        content = self.downloader(
+            realUrl, encoding=self.encoding.currentText())
 
-        doc=pq(content, parser='html').make_links_absolute(base_url=referUrl)
-        if len(args)==0:
+        doc = pq(content, parser='html').make_links_absolute(base_url=referUrl)
+        if len(args) == 0:
             return doc
 
-        result=[]
+        result = []
         for arg in args:
             if arg:
-                r=doc(arg)
+                r = doc(arg)
                 result.append(r)
             else:
                 result.append([])
-        return tuple(result) if len(result)>1 else result[0]
+        return tuple(result) if len(result) > 1 else result[0]
 
-    def updateProgress(self,title,url):
+    def updateProgress(self, title, url):
         self.chapterBrowser.append('已导入章节：'+title+' ('+url+')')
         QApplication.processEvents()    # 处理窗口事件，避免失去响应
 
-    def updateCurrentChapter(self,chapter):
-        self.currentChapter=chapter
+    def updateCurrentChapter(self, chapter):
+        self.currentChapter = chapter
 
-    def showChapterList(self,target):
-        html='<ol>\r\n'
+    def showChapterList(self, target):
+        html = '<ol>\r\n'
         for item in target:
-            title=item['title'] or '无标题'
-            html+='\r\n<li>'+title+'</li>\r\n'
-            if 'child'  in item and item['child']:
-                html+=self.showChapterList(item['child'])
-        html+='</ol>\r\n'
+            title = item['title'] or '无标题'
+            html += '\r\n<li>'+title+'</li>\r\n'
+            if 'child' in item and item['child']:
+                html += self.showChapterList(item['child'])
+        html += '</ol>\r\n'
         return html
 
     def fetchChapterList(self):
-        groupSel=self.chapterGroupSelector.text().strip().lower()
-        linkSel=self.chapterLinkSelector.text().strip().lower()
-        pagSel=self.menuPaginationSelector.text().strip().lower()
+        groupSel = self.chapterGroupSelector.text().strip().lower()
+        linkSel = self.chapterLinkSelector.text().strip().lower()
+        pagSel = self.menuPaginationSelector.text().strip().lower()
         if not linkSel.endswith('a') and linkSel:
-            linkSel=linkSel+' a'
+            linkSel = linkSel+' a'
         if not pagSel.endswith('a') and pagSel:
-            pagSel=pagSel+' a'
+            pagSel = pagSel+' a'
 
-        self.chapterList=[]
-        parent=self.chapterList
-        child=self.chapterList
-        realUrl=self.realUrl.text()
-        referUrl=self.referUrl.text()
-        flag=bool(groupSel or linkSel or pagSel)
-        itemSel=groupSel+','+linkSel if groupSel and linkSel else groupSel+linkSel
+        self.chapterList = []
+        parent = self.chapterList
+        child = self.chapterList
+        realUrl = self.realUrl.text()
+        referUrl = self.referUrl.text()
+        flag = bool(groupSel or linkSel or pagSel)
+        itemSel = groupSel+','+linkSel if groupSel and linkSel else groupSel+linkSel
         while flag:
-            flag=False
+            flag = False
             try:
-                items,group,links,paginations=self.query(realUrl,referUrl,itemSel,groupSel,linkSel,pagSel)
+                items, group, links, paginations = self.query(
+                    realUrl, referUrl, itemSel, groupSel, linkSel, pagSel)
             except Exception as e:
-                QMessageBox.critical(self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.Ok)
+                QMessageBox.critical(
+                    self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.Ok)
                 return
             for item in items:
                 if item in group:
-                    url=item.attrib['href'] if 'href' in item.attrib else ''
-                    section={
+                    url = item.attrib['href'] if 'href' in item.attrib else ''
+                    section = {
                         'title': pq(item).text().strip(),
                         'realUrl': url,
                         'referUrl': url,
-                        'child':[]
+                        'child': []
                     }
                     parent.append(section)
-                    child=section['child']
+                    child = section['child']
                 elif item in links:
                     if 'href' in item.attrib:
-                        url=item.attrib['href']
+                        url = item.attrib['href']
                         child.append({
                             'title': pq(item).text().strip(),
                             'realUrl': url,
                             'referUrl': url,
-                            'child':None
+                            'child': None
                         })
-            if paginations and 'href' in  paginations[0]:
-                referUrl=paginations[0].attrib['href']
-                realUrl=referUrl
-                flag=True
-        html=self.showChapterList(self.chapterList)
+            if paginations and 'href' in paginations[0]:
+                referUrl = paginations[0].attrib['href']
+                realUrl = referUrl
+                flag = True
+        html = self.showChapterList(self.chapterList)
         self.chapterListBrowser.setHtml(html)
 
-    def saveChapter(self,target,data):
+    def saveChapter(self, target, data):
         # 对象选择器
-        titleSel=self.chapterTitleSelector.text().strip().lower()
-        contentSel=self.chapterContentSelector.text().strip().lower()
-        pagSel=self.chapterPaginationSelector.text().strip().lower()
-        itemSel=titleSel+','+contentSel if titleSel and contentSel else titleSel+contentSel
+        titleSel = self.chapterTitleSelector.text().strip().lower()
+        contentSel = self.chapterContentSelector.text().strip().lower()
+        pagSel = self.chapterPaginationSelector.text().strip().lower()
+        itemSel = titleSel+','+contentSel if titleSel and contentSel else titleSel+contentSel
 
         # 网页地址
-        title=data['title']
-        realUrl=data['realUrl']
-        referUrl=data['referUrl']
-        content=pq('<p></p>')
+        title = data['title']
+        realUrl = data['realUrl']
+        referUrl = data['referUrl']
+        content = pq('<p></p>')
         if 'child' in data and data['child']:
-            print('开始插入新卷:',title)
-            self.insertSiblingChapterSignal.emit(target,title,'',realUrl)
-            target=self.currentChapter
+            print('开始插入新卷:', title)
+            self.insertSiblingChapterSignal.emit(target, title, '', realUrl)
+            target = self.currentChapter
             for ch in data['child']:
-                self.saveChapter(target,ch)
+                self.saveChapter(target, ch)
             return
 
-        count=0
-        flag=True
+        count = 0
+        flag = True
         while flag:
-            flag=False
+            flag = False
             try:
                 self.chapterBrowser.append('正在抓取网页：'+realUrl)
                 print('正在抓取网页：'+realUrl)
                 QApplication.processEvents()    # 处理窗口事件，避免失去响应
-                items,titles,contents,paginations=self.query(realUrl,referUrl,itemSel,titleSel,contentSel,pagSel)
+                items, titles, contents, paginations = self.query(
+                    realUrl, referUrl, itemSel, titleSel, contentSel, pagSel)
             except Exception as e:
                 print("无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n'+e.args[0])
-                QMessageBox.critical(self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.Ok)
+                QMessageBox.critical(
+                    self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.Ok)
                 return
             for item in items:
                 if item in titles:
-                    if count>0:
-                        print('保存章节：',title)
-                        self.insertChildChapterSignal.emit(target,title,content.html(),referUrl)
-                        self.insertOneChapter.emit(title or '未命名章节',realUrl)
-                    title=pq(item).text().strip()
-                    content=pq('<p></p>')
-                    count=0
+                    if count > 0:
+                        print('保存章节：', title)
+                        self.insertChildChapterSignal.emit(
+                            target, title, content.html(), referUrl)
+                        self.insertOneChapter.emit(title or '未命名章节', realUrl)
+                    title = pq(item).text().strip()
+                    content = pq('<p></p>')
+                    count = 0
                 elif item in contents:
                     content.append(item)
-                    count+=1
-            if paginations and 'href' in  paginations[0]:
-                referUrl=paginations[0].attrib['href']
-                realUrl=referUrl
-                flag=True
+                    count += 1
+            if paginations and 'href' in paginations[0]:
+                referUrl = paginations[0].attrib['href']
+                realUrl = referUrl
+                flag = True
 
-        if count>0:
-            print('保存章节：',title)
-            self.insertChildChapterSignal.emit(target,title,content.html(),data['referUrl'])
-            self.insertOneChapter.emit(title or '未命名章节',realUrl)
+        if count > 0:
+            print('保存章节：', title)
+            self.insertChildChapterSignal.emit(
+                target, title, content.html(), data['referUrl'])
+            self.insertOneChapter.emit(title or '未命名章节', realUrl)
 
     def fetchChapter(self):
         if not self.chapterContentSelector.text().strip():
             QMessageBox.critical(self, "错误", "请输入章节内容的选择器", QMessageBox.Ok)
         if not self.chapterList:
-            self.chapterList=[{
+            self.chapterList = [{
                 'title': '',
                 'realUrl': self.realUrl.text(),
                 'referUrl': self.referUrl.text(),
             }]
-        count=0
-        total=len(self.chapterList)
+        count = 0
+        total = len(self.chapterList)
         self.progressBar.show()
         for item in self.chapterList:
-            self.saveChapter(self.root,item)
-            count+=1
+            self.saveChapter(self.root, item)
+            count += 1
             self.progressBar.setValue(count*100/total)
         QMessageBox.information(
             self, '保存完毕', '所有章节已经保存，按确定关闭当前窗口。', QMessageBox.Ok)
         self.importFinishSignal.emit()
         self.cancel()
+
 
 class DialogSetStyle(QDialog):
 
@@ -252,6 +260,7 @@ class DialogSetStyle(QDialog):
         self.close()
         self.destroy()
 
+
 class DialogSetConfig(QDialog):
     saveConfigSignal = pyqtSignal(dict)
 
@@ -259,7 +268,7 @@ class DialogSetConfig(QDialog):
         super(DialogSetConfig, self).__init__()
 
         loadUi('ui/setConfig.ui', self)
-        self.config=config
+        self.config = config
         self.initUi()
         self.initSignal()
 
@@ -281,17 +290,18 @@ class DialogSetConfig(QDialog):
         else:
             self.httpProxy.setEnabled(False)
             self.httpsProxy.setEnabled(False)
-    
+
     def saveConfig(self):
-        self.config['httpProxyEnable']=self.httpProxyEnable.isChecked()
-        self.config['httpProxy']['http']=self.httpProxy.text()
-        self.config['httpProxy']['https']=self.httpsProxy.text()
+        self.config['httpProxyEnable'] = self.httpProxyEnable.isChecked()
+        self.config['httpProxy']['http'] = self.httpProxy.text()
+        self.config['httpProxy']['https'] = self.httpsProxy.text()
         self.saveConfigSignal.emit(self.config)
         self.cancel()
 
     def cancel(self):
         self.close()
         self.destroy()
+
 
 class ApplicationWindow(QMainWindow):
     updateChapterSignal = pyqtSignal(QTreeWidgetItem)
@@ -304,11 +314,11 @@ class ApplicationWindow(QMainWindow):
         self.style_path = 'template/style.css'
         self.config_path = 'config.json'
         # 默认配置值
-        self.config={
-            'httpProxyEnable':False,
-            'httpProxy':{
-                'http':'http://127.0.0.1:1080',
-                'https':'http://127.0.0.1:1080'
+        self.config = {
+            'httpProxyEnable': False,
+            'httpProxy': {
+                'http': 'http://127.0.0.1:1080',
+                'https': 'http://127.0.0.1:1080'
             }
         }
 
@@ -377,45 +387,47 @@ class ApplicationWindow(QMainWindow):
         self.epub.itemClicked.disconnect()
         self.chapterContent.textChanged.disconnect()
 
-    def loadConfig(self,file_path):
+    def loadConfig(self, file_path):
         if os.path.isfile(file_path):
-            with open(file_path,mode='r',encoding='utf-8') as f:
-                __config=json.load(f)
+            with open(file_path, mode='r', encoding='utf-8') as f:
+                __config = json.load(f)
             self.updateConfig(__config)
 
-    def updateConfig(self,config):
-        for key,value in config.items():
+    def updateConfig(self, config):
+        for key, value in config.items():
             if key in self.config:
-                config[key]=value
+                config[key] = value
         self.saveConfig()
 
     def saveConfig(self):
-        with open(self.config_path,'w',encoding='utf-8') as f:
-            json.dump(self.config,f,indent=4,sort_keys=True)
+        with open(self.config_path, 'w', encoding='utf-8') as f:
+            json.dump(self.config, f, indent=4, sort_keys=True)
         if self.config['httpProxyEnable']:
-            self.__downloader.proxies=self.config['httpProxy']
+            self.__downloader.proxies = self.config['httpProxy']
         else:
-            self.__downloader.proxies=None
+            self.__downloader.proxies = None
 
     def clearCache(self):
-        reply = QMessageBox.question(self,'清除缓存','是否清除所有下载的缓存文件（包括所有网页和图片）？', QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
-        if reply==QMessageBox.Yes:
-            tempdir='temp/'
-            files=os.listdir(tempdir)
-            total=len(files)
-            count=0
+        reply = QMessageBox.question(self, '清除缓存', '是否清除所有下载的缓存文件（包括所有网页和图片）？',
+                                     QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        if reply == QMessageBox.Yes:
+            tempdir = 'temp/'
+            files = os.listdir(tempdir)
+            total = len(files)
+            count = 0
             self.statusBar.hide()
             self.progressBar.setValue(0)
             self.progressBar.show()
             for file in files:
-                if os.path.isfile(os.path.join(tempdir,file)):
-                    os.remove(os.path.join(tempdir,file))
-                count+=1
+                if os.path.isfile(os.path.join(tempdir, file)):
+                    os.remove(os.path.join(tempdir, file))
+                count += 1
                 self.progressBar.setValue(count*100/total)
                 QApplication.processEvents()
             self.progressBar.hide()
             self.statusBar.show()
-            QMessageBox.information(self,'清除完成','所有缓存已经清除完毕。', QMessageBox.Ok)
+            QMessageBox.information(
+                self, '清除完成', '所有缓存已经清除完毕。', QMessageBox.Ok)
 
     def expandAllChapters(self):
         self.epub.expandAll()
@@ -431,8 +443,9 @@ class ApplicationWindow(QMainWindow):
         self.dialogImporter.insertChildChapterSignal.connect(
             self.insertChildChapterSlot)
         self.dialogImporter.importFinishSignal.connect(self.expandAllChapters)
-        self.updateChapterSignal.connect(self.dialogImporter.updateCurrentChapter)
-        self.dialogImporter.downloader=self.downloader
+        self.updateChapterSignal.connect(
+            self.dialogImporter.updateCurrentChapter)
+        self.dialogImporter.downloader = self.downloader
         self.dialogImporter.show()
 
     def titleChanged(self, title):
@@ -468,7 +481,7 @@ class ApplicationWindow(QMainWindow):
         self.dialogSetStyle.show()
 
     def setConfig(self):
-        self.dialogSetConfig=DialogSetConfig(self.config)
+        self.dialogSetConfig = DialogSetConfig(self.config)
         self.dialogSetConfig.saveConfigSignal.connect(self.saveConfig)
         self.dialogSetConfig.show()
 
