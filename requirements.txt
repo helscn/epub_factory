@@ -3,7 +3,7 @@ chardet==4.0.0
 cssselect==1.1.0
 EbookLib==0.17.1
 idna==2.10
-lxml==4.6.3
+lxml==4.9.1
 PyQt5==5.15.4
 PyQt5-Qt5==5.15.2
 PyQt5-sip==12.9.0
