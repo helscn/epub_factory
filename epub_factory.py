@@ -5,11 +5,38 @@ import sys
 import os
 import json
 
-from PyQt5.uic import loadUi
-from PyQt5.QtCore import Qt, QCoreApplication, pyqtSignal
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
-from PyQt5.QtWidgets import QDialog, QFileDialog, QMessageBox
+from PySide6.QtUiTools import QUiLoader
+from PySide6.QtCore import QFile, QIODevice, QMetaObject
+from PySide6.QtCore import Qt, QCoreApplication, Signal, QRegularExpression
+from PySide6.QtGui import QIcon, QTextCursor, QTextDocument
+from PySide6.QtWidgets import QApplication, QMainWindow, QTreeWidgetItem
+from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
+
+
+def loadUi(uifile, baseinstance=None):
+    """PyQt5-like loadUi compatibility wrapper for PySide6"""
+    class UiLoader(QUiLoader):
+        def __init__(self, baseinstance):
+            super().__init__()
+            self.baseinstance = baseinstance
+
+        def createWidget(self, class_name, parent=None, name=""):
+            if parent is None and self.baseinstance:
+                return self.baseinstance
+            else:
+                widget = super().createWidget(class_name, parent, name)
+                if self.baseinstance and name:
+                    setattr(self.baseinstance, name, widget)
+                return widget
+
+    loader = UiLoader(baseinstance)
+    ui_file = QFile(uifile)
+    ui_file.open(QIODevice.OpenModeFlag.ReadOnly)
+    ui = loader.load(ui_file)
+    ui_file.close()
+    if baseinstance:
+        QMetaObject.connectSlotsByName(baseinstance)
+    return ui
 
 from lib.ebook import EBook
 from lib.downloader import Downloader
@@ -21,16 +48,16 @@ from html import escape
 
 class DialogImporter(QDialog):
     # 插入兄弟章节信号
-    insertSiblingChapterSignal = pyqtSignal(QTreeWidgetItem, str, str, str)
+    insertSiblingChapterSignal = Signal(QTreeWidgetItem, str, str, str)
 
     # 插入子章节信号
-    insertChildChapterSignal = pyqtSignal(QTreeWidgetItem, str, str, str)
+    insertChildChapterSignal = Signal(QTreeWidgetItem, str, str, str)
 
     # 导入完成的信号
-    importFinishSignal = pyqtSignal()
+    importFinishSignal = Signal()
 
     # 每个章节插入完成的信号
-    insertOneChapter = pyqtSignal(str, str)
+    insertOneChapter = Signal(str, str)
 
     def __init__(self, target):
         super(DialogImporter, self).__init__()
@@ -123,7 +150,7 @@ class DialogImporter(QDialog):
                     realUrl, referUrl, itemSel, groupSel, linkSel, pagSel)
             except Exception as e:
                 QMessageBox.critical(
-                    self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.Ok)
+                    self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.StandardButton.Ok)
                 return
             for item in items:
                 if item in group:
@@ -185,7 +212,7 @@ class DialogImporter(QDialog):
             except Exception as e:
                 print("无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n'+e.args[0])
                 QMessageBox.critical(
-                    self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.Ok)
+                    self, "错误", "无法获取、解析以下网页内容：\r\n"+realUrl+'\r\n\r\n'+e.args[0], QMessageBox.StandardButton.Ok)
                 return
             for item in items:
                 if item in titles:
@@ -213,7 +240,7 @@ class DialogImporter(QDialog):
 
     def fetchChapter(self):
         if not self.chapterContentSelector.text().strip():
-            QMessageBox.critical(self, "错误", "请输入章节内容的选择器", QMessageBox.Ok)
+            QMessageBox.critical(self, "错误", "请输入章节内容的选择器", QMessageBox.StandardButton.Ok)
         if not self.chapterList:
             self.chapterList = [{
                 'title': '',
@@ -228,7 +255,7 @@ class DialogImporter(QDialog):
             count += 1
             self.progressBar.setValue(count*100/total)
         QMessageBox.information(
-            self, '保存完毕', '所有章节已经保存，按确定关闭当前窗口。', QMessageBox.Ok)
+            self, '保存完毕', '所有章节已经保存，按确定关闭当前窗口。', QMessageBox.StandardButton.Ok)
         self.importFinishSignal.emit()
         self.cancel()
 
@@ -262,7 +289,7 @@ class DialogSetStyle(QDialog):
 
 
 class DialogSetConfig(QDialog):
-    saveConfigSignal = pyqtSignal(dict)
+    saveConfigSignal = Signal(dict)
 
     def __init__(self, config):
         super(DialogSetConfig, self).__init__()
@@ -303,8 +330,146 @@ class DialogSetConfig(QDialog):
         self.destroy()
 
 
+class DialogFindReplace(QDialog):
+
+    def __init__(self, editor, epub_tree):
+        super(DialogFindReplace, self).__init__()
+        loadUi('ui/findReplace.ui', self)
+        self.editor = editor        # 主窗口的 QTextEdit
+        self.epub = epub_tree       # 章节目录 QTreeWidget
+        self.initSignal()
+
+    def initSignal(self):
+        self.btnFindNext.clicked.connect(self.findNext)
+        self.btnReplace.clicked.connect(self.replaceOne)
+        self.btnReplaceAll.clicked.connect(self.replaceAll)
+        self.btnClose.clicked.connect(self.close)
+
+    def _collect_chapters(self, item=None):
+        """递归收集所有章节 item（排除根节点、无 content 属性或内容为空的节点）"""
+        if item is None:
+            item = self.epub.root
+        result = []
+        for i in range(item.childCount()):
+            child = item.child(i)
+            if hasattr(child, 'content') and child.content:
+                result.append(child)
+            result.extend(self._collect_chapters(child))
+        return result
+
+    def _find_in_editor(self):
+        """在当前编辑器中查找文本，找到返回 True 并选中匹配文本，否则返回 False"""
+        search = self.findText.text()
+        if not search:
+            return False
+
+        if self.useRegex.isChecked():
+            regex = QRegularExpression(search)
+            if not regex.isValid():
+                QMessageBox.critical(
+                    self, "正则表达式错误",
+                    regex.errorString(),
+                    QMessageBox.StandardButton.Ok)
+                return False
+            return self.editor.find(regex)
+        else:
+            return self.editor.find(search)
+
+    def findNext(self):
+        # 从当前光标位置查找
+        if self._find_in_editor():
+            return
+        # 回绕到章节开头再查一次
+        self.editor.moveCursor(QTextCursor.MoveOperation.Start)
+        if self._find_in_editor():
+            return
+        QMessageBox.information(
+            self, "查找", "当前章节未找到指定内容。\n"
+            "要在所有章节中替换请使用「全部替换」。",
+            QMessageBox.StandardButton.Ok)
+
+    def replaceOne(self):
+        # 替换当前选中的文本（若匹配），然后查找下一个
+        cursor = self.editor.textCursor()
+        if cursor.hasSelection():
+            cursor.insertText(self.replaceText.text())
+        self.findNext()
+
+    def _replace_in_html(self, html, search, replacement, use_regex):
+        """用离屏 QTextDocument 做 HTML 感知的查找替换，返回 (new_html, count)"""
+        doc = QTextDocument()
+        doc.setHtml(html)
+        count = 0
+        cursor = QTextCursor(doc)
+
+        if use_regex:
+            regex = QRegularExpression(search)
+            if not regex.isValid():
+                return html, 0
+            cursor = doc.find(regex, cursor)
+            while not cursor.isNull():
+                cursor.insertText(replacement)
+                count += 1
+                cursor = doc.find(regex, cursor)
+        else:
+            cursor = doc.find(search, cursor)
+            while not cursor.isNull():
+                cursor.insertText(replacement)
+                count += 1
+                cursor = doc.find(search, cursor)
+
+        if count > 0:
+            return doc.toHtml(), count
+        return html, 0
+
+    def replaceAll(self):
+        """在所有章节的 HTML 内容中查找并替换"""
+        search = self.findText.text()
+        if not search:
+            return
+
+        use_regex = self.useRegex.isChecked()
+        if use_regex:
+            # 预先校验正则表达式
+            regex = QRegularExpression(search)
+            if not regex.isValid():
+                QMessageBox.critical(
+                    self, "正则表达式错误",
+                    regex.errorString(),
+                    QMessageBox.StandardButton.Ok)
+                return
+
+        chapters = self._collect_chapters()
+        total_count = 0
+
+        for chapter in chapters:
+            content = chapter.content
+            if not content:
+                continue
+
+            new_content, n = self._replace_in_html(
+                content, search, self.replaceText.text(), use_regex)
+
+            if n > 0:
+                chapter.content = new_content
+                total_count += n
+                # 如果是当前显示的章节，同步更新编辑器
+                if self.epub.currentItem() is chapter:
+                    self.editor.setHtml(new_content)
+
+        if total_count == 0:
+            QMessageBox.information(
+                self, "替换完成", "未找到指定内容。",
+                QMessageBox.StandardButton.Ok)
+        else:
+            QMessageBox.information(
+                self, "替换完成",
+                "共替换了 %d 处。" % total_count,
+                QMessageBox.StandardButton.Ok)
+
+
 class ApplicationWindow(QMainWindow):
-    updateChapterSignal = pyqtSignal(QTreeWidgetItem)
+    updateChapterSignal = Signal(QTreeWidgetItem)
 
     def __init__(self):
         super(ApplicationWindow, self).__init__()
@@ -353,6 +518,7 @@ class ApplicationWindow(QMainWindow):
         self.actionSaveAs.triggered.connect(self.saveAs)
         self.actionExit.triggered.connect(QCoreApplication.instance().quit)
         self.actionAboutThis.triggered.connect(self.aboutThis)
+        self.actionFindReplace.triggered.connect(self.findReplace)
 
         # 封面点击事件绑定
         self.cover.clicked.connect(self.changeCover)
@@ -380,6 +546,7 @@ class ApplicationWindow(QMainWindow):
         self.actionSaveAs.triggered.disconnect()
         self.actionExit.triggered.disconnect()
         self.actionAboutThis.triggered.disconnect()
+        self.actionFindReplace.triggered.disconnect()
         self.cover.clicked.disconnect()
         self.bookTitle.textChanged.disconnect()
         self.chapterTitle.textChanged.disconnect()
@@ -409,8 +576,8 @@ class ApplicationWindow(QMainWindow):
 
     def clearCache(self):
         reply = QMessageBox.question(self, '清除缓存', '是否清除所有下载的缓存文件（包括所有网页和图片）？',
-                                     QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
-        if reply == QMessageBox.Yes:
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+        if reply == QMessageBox.StandardButton.Yes:
             tempdir = 'temp/'
             files = os.listdir(tempdir)
             total = len(files)
@@ -427,7 +594,7 @@ class ApplicationWindow(QMainWindow):
             self.progressBar.hide()
             self.statusBar.show()
             QMessageBox.information(
-                self, '清除完成', '所有缓存已经清除完毕。', QMessageBox.Ok)
+                self, '清除完成', '所有缓存已经清除完毕。', QMessageBox.StandardButton.Ok)
 
     def expandAllChapters(self):
         self.epub.expandAll()
@@ -597,8 +764,8 @@ class ApplicationWindow(QMainWindow):
     def removeAllChapters(self):
         # 删除所有章节内容
         reply = QMessageBox.critical(
-            self, "警告", "是否确定要删除所有的章节内容？", QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
+            self, "警告", "是否确定要删除所有的章节内容？", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             title = self.epub.root.text(0)
             self.epub.clear()
             self.epub.root = QTreeWidgetItem(self.epub)
@@ -668,12 +835,16 @@ class ApplicationWindow(QMainWindow):
             self.progressBar.setValue(100)
 
             QMessageBox.information(
-                self, '保存完毕', '当前书籍内容已保存至以下文件：\r\n'+filePath, QMessageBox.Ok)
+                self, '保存完毕', '当前书籍内容已保存至以下文件：\r\n'+filePath, QMessageBox.StandardButton.Ok)
         except Exception as e:
             QMessageBox.critical(
-                self, '错误', '保存Epub书籍时出现错误:\r\n'+e.args[0], QMessageBox.Ok)
+                self, '错误', '保存Epub书籍时出现错误:\r\n'+e.args[0], QMessageBox.StandardButton.Ok)
         self.progressBar.hide()
         self.statusBar.show()
+
+    def findReplace(self):
+        self.dialogFindReplace = DialogFindReplace(self.chapterContent, self.epub)
+        self.dialogFindReplace.show()
 
     def aboutThis(self):
         # self.statusBar.showMessage('关于本软件的说明。',4000)

@@ -419,6 +419,8 @@
     <addaction name="actionSetStyle"/>
     <addaction name="actionSetConfig"/>
     <addaction name="actionClearCache"/>
+    <addaction name="separator"/>
+    <addaction name="actionFindReplace"/>
    </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
@@ -532,6 +534,14 @@
   <action name="actionClearCache">
    <property name="text">
     <string>清除下载缓存...</string>
+   </property>
+  </action>
+  <action name="actionFindReplace">
+   <property name="text">
+    <string>查找替换...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F</string>
    </property>
   </action>
  </widget>

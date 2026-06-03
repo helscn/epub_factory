@@ -1,0 +1,13 @@
+[project]
+name = "epub-factory"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "chardet>=5.2.0",
+    "ebooklib>=0.20",
+    "pyquery>=2.0.1",
+    "pyside6",
+    "requests>=2.32.5",
+]
